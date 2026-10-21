@@ -12,6 +12,7 @@ import {
   Eye,
   Pencil,
   Bell,
+  Loader2,
 } from 'lucide-react';
 import { BLEDevice } from '../types';
 import { getSignalBars, getSignalStrength, getShortUuid, formatTimestamp } from '../utils/bleUtils';
@@ -100,9 +101,12 @@ export function DeviceList({
                   </button>
 
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    device.connecting ? 'bg-blue-500/20 border border-blue-500/30 animate-pulse' :
                     device.connected ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-slate-700/50 border border-slate-600/30'
                   }`}>
-                    {device.connected ? (
+                    {device.connecting ? (
+                      <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                    ) : device.connected ? (
                       <Bluetooth className="w-4 h-4 text-emerald-400" />
                     ) : (
                       <BluetoothOff className="w-4 h-4 text-slate-400" />
@@ -112,7 +116,12 @@ export function DeviceList({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-white truncate">{device.name}</span>
-                      {device.connected && (
+                      {device.connecting && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse">
+                          CONNECTING...
+                        </span>
+                      )}
+                      {device.connected && !device.connecting && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                           CONNECTED
                         </span>
@@ -146,7 +155,8 @@ export function DeviceList({
                     {device.connected ? (
                       <button
                         onClick={() => onDisconnect(device.id)}
-                        className="p-1.5 rounded-md hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                        disabled={device.connecting}
+                        className="p-1.5 rounded-md hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Disconnect"
                       >
                         <Unlink className="w-3.5 h-3.5" />
@@ -154,7 +164,8 @@ export function DeviceList({
                     ) : (
                       <button
                         onClick={() => onConnect(device.id)}
-                        className="p-1.5 rounded-md hover:bg-blue-500/20 text-slate-400 hover:text-blue-400 transition-colors cursor-pointer"
+                        disabled={device.connecting}
+                        className="p-1.5 rounded-md hover:bg-blue-500/20 text-slate-400 hover:text-blue-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         title="Connect"
                       >
                         <Link2 className="w-3.5 h-3.5" />

@@ -3,6 +3,7 @@ export interface BLEDevice {
   name: string;
   rssi: number;
   connected: boolean;
+  connecting: boolean;
   lastSeen: Date;
   services: BLEService[];
 }

@@ -56,6 +56,7 @@ export function useBLE() {
         name: device.name || `Unknown (${device.id.substring(0, 8)})`,
         rssi,
         connected: device.gatt?.connected || false,
+        connecting: false,
         lastSeen: new Date(),
         services: [],
       };
@@ -119,8 +120,19 @@ export function useBLE() {
         details: 'Connecting to GATT server...',
       });
 
+      // Set connecting state
+      setDevices((prev) =>
+        prev.map((d) => (d.id === deviceId ? { ...d, connecting: true } : d))
+      );
+
       try {
-        const server = await device.gatt.connect();
+        // Add timeout for connection attempt (10 seconds)
+        const connectPromise = device.gatt.connect();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Connection timeout (10s)')), 10000);
+        });
+
+        const server = await Promise.race([connectPromise, timeoutPromise]);
         serverRefs.current.set(deviceId, server);
 
         setDevices((prev) =>
@@ -134,12 +146,52 @@ export function useBLE() {
           details: 'GATT server connected successfully',
         });
 
-        // Discover services
-        const services = await server.getPrimaryServices();
+        // Discover services with timeout
+        addLog({
+          type: 'connect',
+          deviceName: device.name || 'Unknown',
+          deviceId,
+          details: 'Discovering services...',
+        });
+
+        let services: any[] = [];
+        try {
+          const servicesPromise = server.getPrimaryServices();
+          const servicesTimeout = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Service discovery timeout (5s)')), 5000);
+          });
+          services = await Promise.race([servicesPromise, servicesTimeout]);
+        } catch (serviceError: any) {
+          // Set connecting state to false on error
+          setDevices((prev) =>
+            prev.map((d) => (d.id === deviceId ? { ...d, connecting: false } : d))
+          );
+          
+          addLog({
+            type: 'error',
+            deviceName: device.name || 'Unknown',
+            deviceId,
+            details: `Service discovery failed: ${serviceError.message}. Device is connected but services could not be discovered.`,
+          });
+          return;
+        }
+
+        addLog({
+          type: 'connect',
+          deviceName: device.name || 'Unknown',
+          deviceId,
+          details: `Found ${services.length} services, discovering characteristics...`,
+        });
+
         const bleServices = await Promise.all(
           services.map(async (service: any) => {
             try {
-              const characteristics = await service.getCharacteristics();
+              // Add timeout for each characteristic discovery
+              const charPromise = service.getCharacteristics();
+              const charTimeout = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('Characteristic discovery timeout')), 3000);
+              });
+              const characteristics = await Promise.race([charPromise, charTimeout]);
               return {
                 uuid: service.uuid,
                 name: getServiceName(service.uuid),
@@ -163,7 +215,7 @@ export function useBLE() {
         setDevices((prev) =>
           prev.map((d) =>
             d.id === deviceId
-              ? { ...d, connected: true, services: bleServices }
+              ? { ...d, connected: true, connecting: false, services: bleServices }
               : d
           )
         );
@@ -176,6 +228,12 @@ export function useBLE() {
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error';
+        
+        // Set connecting state to false on error
+        setDevices((prev) =>
+          prev.map((d) => (d.id === deviceId ? { ...d, connecting: false } : d))
+        );
+
         addLog({
           type: 'error',
           deviceName: device.name || 'Unknown',
